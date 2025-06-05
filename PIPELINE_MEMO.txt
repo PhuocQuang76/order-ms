@@ -1,0 +1,42 @@
+DOCKER
+create container
+docker run -d \
+  --name jenkins \
+  -p 9090:8080 \
+  -p 50000:50000 \
+  -v ~/jenkins_home:/var/jenkins_home \
+  -e JAVA_OPTS="-Xmx2048m -Xms1024m" \
+  jenkins/jenkins:lts
+
+localhost:9090
+docker stop jenkins
+docker rm -f jenkins
+
+----------
+PIPELINE
+tools:
+
+    maven:
+
+HOw to check out source code from github
+    click on "pipeline syntax"
+    select "checkout from vrsion control"
+    url : https://github.com/mohammedhassan1998/Order-Microservice.git
+    branch: main
+    creadentials: create one then select it
+    username: PhuocQuang76
+    password: token
+    click "Generate Pipeline Script"
+    -> it will generate the pipeline script , then copy and paste it to jenkins pipeline
+
+----
+checkout scmGit(
+    branches: [[name: '*/main']],
+    extensions: [],
+    userRemoteConfigs: [[
+        credentialsId: 'a9224474-5548-459c-91bd-260c3a66375c',
+        url: 'https://github.com/PhuocQuang76/order-ms.git'
+    ]]
+)
+----
+
