@@ -1,60 +1,84 @@
-DOCKER
-create container
-docker run -d \
-  --name jenkins \
-  -p 9090:8080 \
-  -p 50000:50000 \
-  -v ~/jenkins_home:/var/jenkins_home \
-  -e JAVA_OPTS="-Xmx2048m -Xms1024m" \
-  jenkins/jenkins:lts
 
-localhost:9090
-docker stop jenkins
-docker rm -f jenkins
+EC2 JENKINS
+Create an ec2 then install java maven and Jenkins (t2.medium)
+Another ec2 instance for java application (t2.micro)
 
-Install java in jenkins
-# Access the container as root
-docker exec -u 0 -it jenkins bash
+Form Jenkins instance , Download all security parts
+1 Update the package list to get the latest package information:
+  	sudo apt update
 
-#exit the container
-exit
+2 Install OpenJDK 17 (Java Development Kit):
+  	sudo apt install openjdk-17-jdk
 
-# Update package lists
-apt update
+3 install Maven
+	sudo apt install maven
 
-# Install OpenJDK 17
-apt install -y openjdk-17-jdk
-
-# Verify installation
-java -version
-
-Install maven in jenkins
-# Access the container as root
-docker exec -u 0 -it jenkins bash
-
-#exit the container
-exit
-
-# Install Maven
-apt update
-apt install -y maven
-
-# Verify
-mvn -v
-
-javahome
-/opt/java/openjdk
+4 install docker
+sudo apt-get install docker.io
 
 
-install docker
-docker exec -u 0 -it jenkins bash
-app-get update
-apt-get install \
-    ca-certificates \
-    curl \
-    gnupg \
-    lsb-release
-mkdir -m 0755 -p /etc/apt/keyrings
+3 Download the Jenkins repository key and save it to/usr/share/keyrings/jenkins-keyring.asc:
+  	curl -fsSL https://pkg.jenkins.io/debian/jenkins.io-2023.key | sudo tee   /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+
+4 Add the Jenkins repository to the system's package sources list:
+  	echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc]   https://pkg.jenkins.io/debian binary/ | sudo tee   /etc/apt/sources.list.d/jenkins.list > /dev/null
+
+5 Update the package list again to include the Jenkins repository:
+  	sudo apt-get update
+
+6 Install Jenkins using apt-get with automatic "yes" to prompts:
+  	sudo apt-get install jenkins -y
+
+7 Check Jenkins version
+  	 jenkins --version
+
+8 Get password to Login Jenkins
+  	sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+72fa74eb8b4a4034a7b9c688cc41b781
+
+ 9  history
+
+Go to jenkins server
+	Sudo su Jenkins
+
+( Commend:
+The Jenkins user doesn't have permission to access the Docker daemon socket.
+ This is a common security configuration in Linux systems.
+
+Solutions
+Option 1: Add Jenkins User to Docker Group (Recommended)
+SSH into your Jenkins server and run:
+
+Add jenkins user to docker group
+ sudo usermod -aG docker jenkins
+
+ # Restart Jenkins
+ sudo systemctl restart jenkins)
+
+
+
+Edit inbound route to open web browser
+	CustomTCP 8080 everywhere
+
+			———
+Open jenkinUI on browser
+	http://ec2publicIP:8080
+	Then work with password …
+
+
+
+Plugin"
+    git
+    docker
+    docker-compose
+
+
+tool
+    jdk:
+    add jdk
+    name: jdk17
+    maven:
+    name: maven
 
 ----------
 PIPELINE
@@ -98,38 +122,28 @@ docker stop jenkins 2>/dev/null || true
 docker rm jenkins 2>/dev/null || true
 
 # Start Jenkins with the correct Docker socket path
-docker run -d \
-  --name jenkins \
-  -p 9090:8080 \
-  -p 50000:50000 \
-  -v jenkins_home:/var/jenkins_home \
-  -v /Users/aileen/.docker/run/docker.sock:/var/run/docker.sock \
-  -v /usr/local/bin/docker:/usr/bin/docker \
-  --group-add $(stat -f %g /Users/aileen/.docker/run/docker.sock) \
-  --privileged \
-  jenkins/jenkins:lts-jdk17
+docker run -d -p 9090:8080 -p 50000:50000 -v jenkins_home:/var/jenkins_home --name jenkins jenkins/jenkins:lts
 
+docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 
-
+docker exec -it jenkins bash
+cat /var/jenkins_home/secrets/initialAdminPassword
 
 
 
 pipeline {
-    agent any  // Changed from docker agent to any
+    agent any
 
-        tools {
-            maven 'maven'
-            jdk 'jdk17'
-        }
-
-        environment {
-            DOCKER_HUB_REPO = 'quanghongphuoc/order-ms'
-            DOCKER_IMAGE_TAG = "${env.BUILD_NUMBER}"
-        }
+    tools {
+        maven 'maven'
+        jdk 'jdk17'  // Make sure this matches the exact name in Jenkins Global Tool Configuration
+    }
 
     environment {
         DOCKER_HUB_REPO = 'quanghongphuoc/order-ms'
         DOCKER_IMAGE_TAG = "${env.BUILD_NUMBER}"
+        AWS_REGION = 'us-west-2'
+        CLUSTER_NAME = 'order-ms-cluster'
     }
 
     stages {
@@ -153,59 +167,34 @@ pipeline {
         }
 
         stage('Build and Test') {
-                    agent {
-                        docker {
-                            image 'maven:3.9.6-eclipse-temurin-17'
-                            args '-v /root/.m2:/root/.m2'  // Cache Maven dependencies
-                            reuseNode true
-                        }
-                    }
-                    steps {
-                        sh 'mvn clean package'
-                        junit '**/target/surefire-reports/**/*.xml'
-                        stash includes: 'target/*.jar', name: 'app-jar'  // Save the JAR
-                    }
-                }
-
-                stage('Build Docker Image') {
-                    agent {
-                        docker {
-                            image 'docker:20.10.16-dind'  // Use Docker-in-Docker
-                            args '--privileged'
-                            reuseNode true
-                        }
-                    }
-                    steps {
-                        unstash 'app-jar'  // Get the JAR from previous stage
-                        script {
-                            // Create Dockerfile dynamically
-                            writeFile file: 'Dockerfile', text: '''
-                                FROM openjdk:17-jdk-slim
-                                WORKDIR /app
-                                COPY target/*.jar app.jar
-                                EXPOSE 8088
-                                ENTRYPOINT ["java", "-jar", "app.jar"]
-                            '''
-
-                            sh '''
-                                ls -la target/
-                                docker build -t ${DOCKER_HUB_REPO}:${DOCKER_IMAGE_TAG} .
-                                docker images | grep ${DOCKER_HUB_REPO} || echo "No matching images found"
-                            '''
-                        }
-                    }
-                }
-
-
-        stage('Push to Docker Hub') {
-            when {
-                anyOf {
-                    branch 'main'
-                    branch 'master'
-                }
-            }
             steps {
                 script {
+                    // Explicitly set JAVA_HOME using the tool
+                    withEnv(["JAVA_HOME=${tool 'jdk17'}", "PATH+JDK=${tool 'jdk17'}/bin:${env.PATH}"]) {
+                        sh 'mvn -v'  // Test Java and Maven
+                        sh 'mvn clean install'
+                    }
+                }
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh """
+                        echo "Building Docker image..."
+                        docker build -t ${env.DOCKER_HUB_REPO}:${env.DOCKER_IMAGE_TAG} .
+                        docker tag ${env.DOCKER_HUB_REPO}:${env.DOCKER_IMAGE_TAG} ${env.DOCKER_HUB_REPO}:latest
+                        echo "Docker images:"
+                        docker images | grep ${env.DOCKER_HUB_REPO}
+                    """
+                }
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                script {
+                    echo "Pushing to Docker Hub..."
                     withCredentials([usernamePassword(
                         credentialsId: 'docker-hub-credentials',
                         usernameVariable: 'DOCKER_HUB_USERNAME',
@@ -213,27 +202,320 @@ pipeline {
                     )]) {
                         sh """
                             echo "Logging into Docker Hub..."
-                            echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USERNAME" --password-stdin
+                            echo \"$DOCKER_HUB_PASSWORD\" | docker login -u \"$DOCKER_HUB_USERNAME\" --password-stdin
 
-                            echo "Tagging as latest..."
-                            docker tag ${DOCKER_HUB_REPO}:${DOCKER_IMAGE_TAG} ${DOCKER_HUB_REPO}:latest
+                            echo "Pushing images to Docker Hub..."
+                            docker push ${env.DOCKER_HUB_REPO}:${env.DOCKER_IMAGE_TAG}
+                            docker push ${env.DOCKER_HUB_REPO}:latest
 
-                            echo "Pushing version ${DOCKER_IMAGE_TAG}..."
-                            docker push ${DOCKER_HUB_REPO}:${DOCKER_IMAGE_TAG}
+                            echo "Images pushed successfully!"
+                        """
+                    }
+                }
+            }
+        }
 
-                            echo "Pushing latest..."
-                            docker push ${DOCKER_HUB_REPO}:latest
+        stage('Deploy to EKS') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws-credentials',
+                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                ]]) {
+                    script {
+                        sh """
+                            # Configure AWS CLI
+                            aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
+                            aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
+                            aws configure set region ${AWS_REGION}
 
-                            echo "Successfully pushed to Docker Hub"
+                            # Update kubeconfig with your cluster name
+                            aws eks update-kubeconfig --name ${CLUSTER_NAME} --region ${AWS_REGION}
+
+                            # Rest of your deployment commands...
                         """
                     }
                 }
             }
         }
     }
+
     post {
         always {
-            cleanWs()
+            script {
+                // Clean up Docker images to save disk space
+                sh '''
+                    echo "Cleaning up Docker resources..."
+                    docker system prune -af --volumes || true
+                    echo "Cleanup complete"
+                '''
+            }
         }
     }
-}
+}}
+
+
+
+---------
+************** EKS  **************
+  - elastic kubernetes service
+  https://aws.amazon.com/eks/
+  - maintaining master node
+  - Install Control Plan (MAster Node)process
+     + API server : responsible for handling API requests
+     + controller manager : responsible for creating pods and services
+     + scheduler : responsible for scheduling pods.
+     + etcd : is a distributed key-value store used to store the state of the cluster
+  - WOrker NOde
+     + self-managed node
+        - all worker nodes process must be instaled
+           - kubelet
+           - kube-proxy
+           - container runtime
+        - update and security patches are the user's responsibility
+        - Register the nodes with the control plane
+     + Managed node group
+        - automates the provvisioning and lifecycle management of ec2 nodes
+        - manged nodes run eks optimized images
+        - streamline way to manage lifecycle of nodes using single aws/eks API call
+            - create
+            - update
+            - terminate
+        - Evry modes is part of an auto scaling group that mansged for you by eks
+     + fargate
+        - no need to configure any ec2 instances
+        - fargate will create worker node for you on demand
+     + What need to create eks cluster
+       -name, k8s version,
+       - iam role for cluster
+          - provision nodes
+          - storage
+          - secrte
+       - vpc,
+       - subnets,
+       - security group for cluster
+       - Node group
+           - instance type
+           - instance count
+           - which cluster to connect
+
+     + Connect to cluster
+        - aws cli
+        - kubectl
+
+
+************** TERRAFORM **************
+ + install terraform in local machine
+    https://developer.hashicorp.com/terraform/tutorials/aws-get-started/install-cli
+ + install aws cli in local machine
+    https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+ + connect terraform with aws cli
+    aws configure
+    ts very easy to connect Terraform with AWS. Run `aws configure` command and provide the AWS Security credentials as shown in the video.
+
+ + Clone the repository and Run `terraform init`. This will intialize the terraform environment for you and download the modules, providers and other configuration required.Add commentMore actions
+    terraform init
+
++ Optionally review the terraform configuration
+    Run `terraform plan` to see the configuration it creates when executed.
+
++  ### Finally, Apply terraform configuation to create EKS cluster with VPC
+   `terraform apply`
+
+
+---
+add AWS crediantials plugin
+add access key and secret key to jenkins
+system > manage jenkins > credentials
+kind: aws credentials
+scope: global
+id: aws-credentials
+id: aws-credentials
+aws access key id
+aws secret access key
+
+
+
+
+
+
+
+************** JENKINS **************
+* Add login awsinformation to credentials
+    manage Jenkins / Credentials / System / Global credentials
+    "add Credentials"
+        - add access key
+        kind: sercret text
+        scope: "GLOBAL"
+        secret: inputaws secret key
+        id: "AWS_ACCESS_KEY_ID"
+        description: "AWS_ACCESS_KEY_ID"
+    "add Credentials"
+        - add secret key
+        kind: sercret text
+        scope: "GLOBAL"
+        secret: inputaws secret key
+        id: "AWS_SECRET_ACCESS_KEY"
+        description: "AWS_SECRET_ACCESS_KEY"
+
+* Manage Jenkins / Plugindownload:
+    Kubenetes continuous deploy
+* Tool:
+    kubectl
+    helm
+
+* Script pipeline
+    pipeline {
+        agent any
+        environment {
+            AWS_ACCESS_KEY_ID = credentials('AWS_ACCESS_KEY_ID')
+            AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
+            AWS_DEFAULT_REGION = "us-west-2"
+        }
+        stages {
+            stage('CHeckout SCM') {
+                steps {
+                    script {
+                    //How to get this code
+                    (pipeline syntax
+                    step: checkout from version control
+                    SCM:git
+                    URL: https://github.com/PhuocQuang76/order-ms.git
+                    credential
+                    branch: main
+                    Generate pipeline, will generate the pipeline script, copy and paste it to jenkins pipeline)
+                        chcckout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-credentials', url: 'https://github.com/PhuocQuang76/order-ms.git']])
+                    }
+                }
+
+
+            }
+
+
+            ...
+            stage('Deploying springboot app to Kubernetes') {
+                steps {
+                    script {
+                        sh 'aws eks update -kubeconfig --name order-ms-eks --region us-west-2')
+                        -> name : cluster name
+                        sh 'kubectl get nodes'
+                        sh "kubectl apply -f deployment.yaml"
+
+                    }
+                }
+            }
+
+
+
+need to do aws configure
+after successfully deploy
+type command:
+kubectl get pods
+
+kubectl get svc
+will giv us the urn:
+copy urn and pass it to browser
+
+
+
+    ps: what id deployment.yaml?
+
+
+
+------------------------
+  deployment.yaml
+  yaml
+  CopyInsert
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: order-service
+    namespace: order-service
+  spec:
+    replicas: 2
+    selector:
+      matchLabels:
+        app: order-service
+    template:
+      metadata:
+        labels:
+          app: order-service
+      spec:
+        containers:
+        - name: order-service
+          image: quanghongphuoc/order-ms:${DOCKER_IMAGE_TAG}
+          ports:
+          - containerPort: 8080
+          env:
+          - name: SPRING_PROFILES_ACTIVE
+            value: "prod"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+  service.yaml
+  yaml
+  CopyInsert
+  apiVersion: v1
+  kind: Service
+  metadata:
+    name: order-service
+    namespace: order-service
+  spec:
+    type: ClusterIP
+    ports:
+    - port: 80
+      targetPort: 8080
+    selector:
+      app: order-service
+  3. Required Jenkins Plugins
+  Make sure these plugins are installed:
+
+  AWS Credentials Plugin
+  AWS CLI
+  Kubernetes CLI (kubectl) Plugin
+  Pipeline: AWS Steps
+  4. EKS Worker Node IAM Role
+  Ensure your EKS worker nodes have the proper IAM role with these policies:
+
+  AmazonEKSWorkerNodePolicy
+  AmazonEKS_CNI_Policy
+  AmazonEC2ContainerRegistryReadOnly
+  5. Security Considerations
+  Secrets Management:
+  Store sensitive data in Kubernetes Secrets
+  Use AWS Secrets Manager or Parameter Store for production
+  Network Policies:
+  Implement NetworkPolicies to control pod-to-pod communication
+  Use security groups to restrict cluster access
+  IAM Roles for Service Accounts (IRSA):
+  Use IAM roles for service accounts instead of instance profiles
+  This provides fine-grained permissions for pods
+
+
+
+    Directory Structure:
+    CopyInsert
+    your-project/
+    ├── k8s/
+    │   ├── deployment.yaml
+    │   ├── service.yaml
+    │   ├── ingress.yaml
+    │   └── secrets.yaml
+    └── Jenkinsfile
