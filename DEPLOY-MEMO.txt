@@ -1,0 +1,221 @@
+https://www.coachdevops.com/2023/05/how-to-deploy-springboot-microservices_13.html
+Pre-requisites:
+1. EKS cluster needs to be up running. Click here to learn how to create Amazon EKS cluster.
+2. Jenkins instance is up and running
+3. Install AWS CLI on Jenkins instance
+4. Helm installed on Jenkins instance for deploying to EKS cluster
+5. Install Kubectl on Jenkins instance
+6. Install eksctl on Jenkins instance
+7. Install Docker in Jenkins and Jenkins have proper permission to perform Docker builds
+8. Make sure to Install Docker, Docker pipeline
+
+
+
+9. Create ECR repo in AWS
+10. Dockerfile created along with the application source code for springboot App.
+11. Namespace created in EKS cluster
+
+
+1)**************** JENKINS SERVER ****************
+
+    # Install AWS CLI
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    sudo apt install unzip
+    sudo unzip awscliv2.zip
+    sudo ./aws/install
+    aws --version
+
+    # Install Helm
+        Download scripts
+        curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3
+        sudo chmod 700 get_helm.sh
+        sudo ./get_helm.sh
+        helm version --client
+
+    # Install kubectl
+        curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+        echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
+        sudo apt-get update
+        sudo apt-get install -y kubectl
+        kubectl version --client
+
+    # Install eksctl
+        curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
+        Move the extracted binary to /usr/local/bin.
+        sudo mv /tmp/eksctl /usr/local/bin
+        eksctl version
+
+
+    # Install Docker
+        sudo apt-get install docker.io -y
+        Add Ubuntu user to Docker group
+        sudo usermod -aG docker jenkins
+        restart Jenkins
+        sudo systemctl restart jenkins
+        Reloas systm demon files
+        sudo systemctl daemon-reload
+        restart Docker service as well
+        sudo service docker stop
+        sudo service docker start
+
+    # In pipeline
+        + install plugin
+            Docker
+            Docker pipeline
+        + tool
+            - maven
+                 Maven3
+                 MAVEN_HOME: /usr/share/maven
+            kubernetes
+
+2) **************** ECR repo ****************
+    + private registry
+    + name: my-docker-repo
+    -> create
+
+3) **************** EKS cluster ****************
+    + IAM
+         Policy: AdministratorAccess
+    + Go to jenkins server
+    sudo su jenkins
+
+    + Using Helm
+        Just package manager of Kubernetes tomanage  the insaltation of EKS cluster
+        and dependencies behind the scenes
+        + Install helm in local machine as well
+             Install Homebrew if you don't have it
+            /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+            # Install Helm
+            brew install helm
+
+            # Verify installation
+            helm version
+        + comamand:
+            - Ceratemychar folder
+                "helm creat mychart"
+            - Install tree
+                brew install tree
+            - See , what inside the chart, type
+               "tree mychart"
+               mychart
+               ├── Chart.yaml
+               ├── charts
+               ├── templates
+               │   ├── NOTES.txt
+               │   ├── _helpers.tpl
+               │   ├── deployment.yaml
+               │   ├── hpa.yaml
+               │   ├── ingress.yaml
+               │   ├── service.yaml
+               │   ├── serviceaccount.yaml
+               │   └── tests
+               │       └── test-connection.yaml
+               see, with helm, it create all the template for you.
+               * In values.yaml
+                    - image:
+                        repository: nginx -> change to ecr arn
+                        so it will be
+                        repository: arn:aws:ecr:us-east-1:123456789012:repository/my-docker-repo
+
+                    -  service:
+                        type: ClusterIP -> chagne to LoadBalancer
+                        so it will be
+                        type: LoadBalancer
+
+               * deployment.yaml
+                  containers:
+                    - name: http
+                      containerPort: 80 -> change to 8080
+                      so it will be
+                      containerPort: 8080
+
+
+
+4) **************** PIPELINE ****************
+* Creditials
+    - aws credentials
+    - github credentials
+
+* Pipeline
+    pipeline {
+        agent any
+
+        tools {
+            maven 'maven'
+            jdk 'jdk17'  // Make sure this matches the exact name in Jenkins Global Tool Configuration
+        }
+
+        environment {
+            registry = "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-docker-repo"
+            DOCKER_HUB_REPO = 'quanghongphuoc/order-ms'
+
+            DOCKER_IMAGE_TAG = "${env.BUILD_NUMBER}"
+            AWS_REGION = 'us-west-2'
+            CLUSTER_NAME = 'order-ms-cluster'
+        }
+
+        stages {
+            stage('Clean Workspace') {
+                steps {
+                    cleanWs()
+                }
+            }
+
+            stage('Checkout Code') {
+                steps {
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: '*/main']],
+                        userRemoteConfigs: [[
+                            credentialsId: 'github-credentials',
+                            url: 'https://github.com/PhuocQuang76/order-ms.git'
+                        ]]
+                    ])
+                }
+            }
+
+            stage('Build') {
+                steps {
+                    sh 'mvn clean install'
+                }
+            }
+
+            stage('Build Docker Image') {
+                steps {
+                    script {
+                       dockerImage = docker.build registry
+                       dockerImage.tag("$BUILD_NUMBER")
+                    }
+                }
+            }
+
+            stage('Push to Docker Hub') {
+                steps {
+                    script {
+                        echo "Pushing to Docker Hub..."
+                        withCredentials([usernamePassword(
+                            credentialsId: 'docker-hub-credentials',
+                            usernameVariable: 'DOCKER_HUB_USERNAME',
+                            passwordVariable: 'DOCKER_HUB_PASSWORD'
+                        )]) {
+                            sh """
+                                echo "Logging into Docker Hub..."
+                                echo \"$DOCKER_HUB_PASSWORD\" | docker login -u \"$DOCKER_HUB_USERNAME\" --password-stdin
+
+                                echo "Pushing images to Docker Hub..."
+                                docker push ${env.DOCKER_HUB_REPO}:${env.DOCKER_IMAGE_TAG}
+                                docker push ${env.DOCKER_HUB_REPO}:latest
+
+                                echo "Images pushed successfully!"
+                            """
+                        }
+                    }
+                }
+            }
+
+
+
+
+
+

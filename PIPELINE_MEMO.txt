@@ -1,139 +1,122 @@
 
-EC2 JENKINS
-Create an ec2 then install java maven and Jenkins (t2.medium)
-Another ec2 instance for java application (t2.micro)
+1) **************** EC2 JENKINS SERVER ******************
+    * Create an ec2 (t2.medium)
+        ps:Another ec2 instance for java application (t2.micro)
 
-Form Jenkins instance , Download all security parts
-1 Update the package list to get the latest package information:
-  	sudo apt update
+    * Update the package list to get the latest package information:
+  	    sudo apt update
 
-2 Install OpenJDK 17 (Java Development Kit):
-  	sudo apt install openjdk-17-jdk
+    * Install OpenJDK 17 (Java Development Kit):
+  	    sudo apt install openjdk-17-jdk
 
-3 install Maven
-	sudo apt install maven
+    * install Maven
+	    sudo apt install maven
 
-4 install docker
-sudo apt-get install docker.io
+    * install docker
+        sudo apt-get install docker.io
 
+    * Install kubectl
+              curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
+              echo "deb http://apt.kubernetes.io/ kubernetes-xenial main" | sudo tee -a /etc/apt/sources.list.d/kubernetes.list
+              sudo apt-get update
+              sudo apt-get install -y kubectl
+              kubectl version --client
 
-3 Download the Jenkins repository key and save it to/usr/share/keyrings/jenkins-keyring.asc:
-  	curl -fsSL https://pkg.jenkins.io/debian/jenkins.io-2023.key | sudo tee   /usr/share/keyrings/jenkins-keyring.asc > /dev/null
+    * Install AWS CLI
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          sudo apt install unzip
+          sudo unzip awscliv2.zip
+          sudo ./aws/install
+          aws --version
 
-4 Add the Jenkins repository to the system's package sources list:
-  	echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc]   https://pkg.jenkins.io/debian binary/ | sudo tee   /etc/apt/sources.list.d/jenkins.list > /dev/null
+    * install jenkins
+        + Download the Jenkins repository key and save it to/usr/share/keyrings/jenkins-keyring.asc:
+  	        curl -fsSL https://pkg.jenkins.io/debian/jenkins.io-2023.key | sudo tee   /usr/share/keyrings/jenkins-keyring.asc > /dev/null
 
-5 Update the package list again to include the Jenkins repository:
-  	sudo apt-get update
+        + Add the Jenkins repository to the system's package sources list:
+  	        echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc]   https://pkg.jenkins.io/debian binary/ | sudo tee   /etc/apt/sources.list.d/jenkins.list > /dev/null
 
-6 Install Jenkins using apt-get with automatic "yes" to prompts:
-  	sudo apt-get install jenkins -y
+        + Update the package list again to include the Jenkins repository:
+  	        sudo apt-get update
 
-7 Check Jenkins version
-  	 jenkins --version
+        + Install Jenkins using apt-get with automatic "yes" to prompts:
+  	        sudo apt-get install jenkins -y
 
-8 Get password to Login Jenkins
-  	sudo cat /var/lib/jenkins/secrets/initialAdminPassword
-72fa74eb8b4a4034a7b9c688cc41b781
+        + Check Jenkins version
+  	        jenkins --version
 
- 9  history
-
-Go to jenkins server
-	Sudo su Jenkins
-
-( Commend:
-The Jenkins user doesn't have permission to access the Docker daemon socket.
- This is a common security configuration in Linux systems.
-
-Solutions
-Option 1: Add Jenkins User to Docker Group (Recommended)
-SSH into your Jenkins server and run:
-
-Add jenkins user to docker group
- sudo usermod -aG docker jenkins
-
- # Restart Jenkins
- sudo systemctl restart jenkins)
+        + Get password to Login Jenkins
+  	        sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+            ->72fa74eb8b4a4034a7b9c688cc41b781
 
 
+    * Go to jenkins server
+	    Sudo su Jenkins
 
-Edit inbound route to open web browser
-	CustomTCP 8080 everywhere
+        ( Commend:
+            The Jenkins user doesn't have permission to access the Docker daemon socket.
+            This is a common security configuration in Linux systems.
+
+        + Add jenkins user to docker group
+            sudo usermod -aG docker jenkins
+
+        + Restart Jenkins
+            sudo systemctl restart jenkins)
+
+    * Edit inbound route to open web browser
+	    CustomTCP 8080 everywhere
 
 			———
-Open jenkinUI on browser
-	http://ec2publicIP:8080
-	Then work with password …
+    * Open jenkinUI on browser
+	    http://ec2publicIP:8080
+	    Then work with password …
+
+       + Install Plugin
+           docker
+           docker-pipeline
+           Kubernetes Deploy plugin or Kubernetes Continuous Deploy Plugin
+           Kubernetes CLI Plugin
+
+
+       + Add credentials
+            manage Jenkins / Credentials / System / Global credentials
+            "add docker hub credentials"
+            "add github credentials"
+            "add Kubernetes credentials"
+                kind: kubernetes configuration
+
+                PS: Get cluster config content
+                sudo cat ~/.kube/config
+                or
+                sudo -u jenkins cat /var/lib/jenkins/.kube/config
+                    copy all of them and paste to kubernetes credentials
+
+                ID: K8S
+                description: "K8S"
+
+    * set a clusterrole as cluster-admin
+        By default, clusterrolebinding has system:anonymous set which blocks the cluster access.
+        Execute the following command to set a clusterrole as cluster-admin which will give you
+        the required access.
+
+        kubectl create clusterrolebinding cluster-system-anonymous --clusterrole=cluster-admin --user=system:anonymous
+
+
+    * Settool
+        + jdk:
+            add jdk
+            name: jdk17
+        + maven:
+            name: maven
+
+************** ESK SET UP IAM authenticat *************
+    * Create
 
 
 
-Plugin"
-    git
-    docker
-    docker-compose
-
-
-tool
-    jdk:
-    add jdk
-    name: jdk17
-    maven:
-    name: maven
-
-----------
-PIPELINE
-tools:
-
-    maven:
-
-HOw to check out source code from github
-    click on "pipeline syntax"
-    select "checkout from vrsion control"
-    url : https://github.com/mohammedhassan1998/Order-Microservice.git
-    branch: main
-    creadentials: create one then select it
-    username: PhuocQuang76
-    password: token
-    click "Generate Pipeline Script"
-    -> it will generate the pipeline script , then copy and paste it to jenkins pipeline
-
-----
-checkout scmGit(
-    branches: [[name: '*/main']],
-    extensions: [],
-    userRemoteConfigs: [[
-        credentialsId: 'a9224474-5548-459c-91bd-260c3a66375c',
-        url: 'https://github.com/PhuocQuang76/order-ms.git'
-    ]]
-)
-----
-
-
-
-
-after this
-docker build -t my-jenkins -f Dockerfile.jenkins .
-
-# Run the container
-
-
-# Stop and remove existing Jenkins container if running
-docker stop jenkins 2>/dev/null || true
-docker rm jenkins 2>/dev/null || true
-
-# Start Jenkins with the correct Docker socket path
-docker run -d -p 9090:8080 -p 50000:50000 -v jenkins_home:/var/jenkins_home --name jenkins jenkins/jenkins:lts
-
-docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
-
-docker exec -it jenkins bash
-cat /var/jenkins_home/secrets/initialAdminPassword
-
-
-
+************* PIPELINE ***********
 pipeline {
     agent any
-
     tools {
         maven 'maven'
         jdk 'jdk17'  // Make sure this matches the exact name in Jenkins Global Tool Configuration
@@ -147,12 +130,6 @@ pipeline {
     }
 
     stages {
-        stage('Clean Workspace') {
-            steps {
-                cleanWs()
-            }
-        }
-
         stage('Checkout Code') {
             steps {
                 checkout([
@@ -166,27 +143,17 @@ pipeline {
             }
         }
 
-        stage('Build and Test') {
+        stage('Build') {
             steps {
-                script {
-                    // Explicitly set JAVA_HOME using the tool
-                    withEnv(["JAVA_HOME=${tool 'jdk17'}", "PATH+JDK=${tool 'jdk17'}/bin:${env.PATH}"]) {
-                        sh 'mvn -v'  // Test Java and Maven
-                        sh 'mvn clean install'
-                    }
-                }
+                sh 'mvn clean install'
             }
         }
+
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh """
-                        echo "Building Docker image..."
-                        docker build -t ${env.DOCKER_HUB_REPO}:${env.DOCKER_IMAGE_TAG} .
-                        docker tag ${env.DOCKER_HUB_REPO}:${env.DOCKER_IMAGE_TAG} ${env.DOCKER_HUB_REPO}:latest
-                        echo "Docker images:"
-                        docker images | grep ${env.DOCKER_HUB_REPO}
-                    """
+                   dockerImage = docker.build registry
+                   dockerImage.tag("$BUILD_NUMBER")
                 }
             }
         }
@@ -215,49 +182,46 @@ pipeline {
             }
         }
 
-        stage('Deploy to EKS') {
-            steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws-credentials',
-                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                ]]) {
-                    script {
-                        sh """
-                            # Configure AWS CLI
-                            aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID}
-                            aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY}
-                            aws configure set region ${AWS_REGION}
+        stage ('K8S Deploy') {
+             kubernetesDeploy(
+                 configs: 'order-ms/deployment.yaml',
+                 kubeconfigId: 'K8S',
+                 enableConfigSubstitution: true
+             )
+        }
 
-                            # Update kubeconfig with your cluster name
-                            aws eks update-kubeconfig --name ${CLUSTER_NAME} --region ${AWS_REGION}
-
-                            # Rest of your deployment commands...
-                        """
-                    }
+        post {
+            always {
+                script {
+                    // Clean up Docker images to save disk space
+                    sh '''
+                        echo "Cleaning up Docker resources..."
+                        docker system prune -af --volumes || true
+                        echo "Cleanup complete"
+                    '''
                 }
             }
         }
     }
+}
 
-    post {
-        always {
-            script {
-                // Clean up Docker images to save disk space
-                sh '''
-                    echo "Cleaning up Docker resources..."
-                    docker system prune -af --volumes || true
-                    echo "Cleanup complete"
-                '''
-            }
-        }
-    }
-}}
+************ Verify ************
+kubectl get pods
+kubectl get deployments
+kubectl get services
+
+************ Access the app in K8S cluster ************
+kubectl geet svc
+will give you external_IP
+copy that uri and paste to browser
+uri:8088
+Once build is successful, go to browser and enter master or worker node public ip address along with port number mentioned above
+http://master_or_worker_node_public_ipaddress:port_no_from_above
 
 
 
----------
+
+JUST MEMO ABOUT SETUP
 ************** EKS  **************
   - elastic kubernetes service
   https://aws.amazon.com/eks/
@@ -323,104 +287,49 @@ pipeline {
 +  ### Finally, Apply terraform configuation to create EKS cluster with VPC
    `terraform apply`
 
-
 ---
-add AWS crediantials plugin
-add access key and secret key to jenkins
-system > manage jenkins > credentials
-kind: aws credentials
-scope: global
-id: aws-credentials
-id: aws-credentials
-aws access key id
-aws secret access key
+  GO TO AWS EKS
+  click on cluster name:
+  add authorization
+  so you are able to se nodes in the cluster
+  + Click access tab/ create access entry
+     select IAM principal ARN : arn:aws:iam::011243863866:user/aileen
+     typ : standard
+     policy name: AmazonEKSClusterAdminPolicy
+     click "add policy"
+     Create
+  + Click computet tab
 
-
-
-
-
-
+=------------------------\
 
 ************** JENKINS **************
 * Add login awsinformation to credentials
     manage Jenkins / Credentials / System / Global credentials
     "add Credentials"
         - add access key
-        kind: sercret text
+        kind: username password
         scope: "GLOBAL"
         secret: inputaws secret key
         id: "AWS_ACCESS_KEY_ID"
         description: "AWS_ACCESS_KEY_ID"
     "add Credentials"
         - add secret key
-        kind: sercret text
+        kind: username password
         scope: "GLOBAL"
         secret: inputaws secret key
         id: "AWS_SECRET_ACCESS_KEY"
         description: "AWS_SECRET_ACCESS_KEY"
-
-* Manage Jenkins / Plugindownload:
-    Kubenetes continuous deploy
-* Tool:
-    kubectl
-    helm
-
-* Script pipeline
-    pipeline {
-        agent any
-        environment {
-            AWS_ACCESS_KEY_ID = credentials('AWS_ACCESS_KEY_ID')
-            AWS_SECRET_ACCESS_KEY = credentials('AWS_SECRET_ACCESS_KEY')
-            AWS_DEFAULT_REGION = "us-west-2"
-        }
-        stages {
-            stage('CHeckout SCM') {
-                steps {
-                    script {
-                    //How to get this code
-                    (pipeline syntax
-                    step: checkout from version control
-                    SCM:git
-                    URL: https://github.com/PhuocQuang76/order-ms.git
-                    credential
-                    branch: main
-                    Generate pipeline, will generate the pipeline script, copy and paste it to jenkins pipeline)
-                        chcckout scmGit(branches: [[name: '*/main']], extensions: [], userRemoteConfigs: [[credentialsId: 'github-credentials', url: 'https://github.com/PhuocQuang76/order-ms.git']])
-                    }
-                }
-
-
-            }
-
-
-            ...
-            stage('Deploying springboot app to Kubernetes') {
-                steps {
-                    script {
-                        sh 'aws eks update -kubeconfig --name order-ms-eks --region us-west-2')
-                        -> name : cluster name
-                        sh 'kubectl get nodes'
-                        sh "kubectl apply -f deployment.yaml"
-
-                    }
-                }
-            }
-
-
-
-need to do aws configure
-after successfully deploy
-type command:
-kubectl get pods
-
-kubectl get svc
-will giv us the urn:
-copy urn and pass it to browser
-
-
-
-    ps: what id deployment.yaml?
-
+   ****  add AWS crediantials plugin
+   ---
+       add access key and secret key to jenkins
+       system > manage jenkins > credentials
+       kind: aws credentials
+       scope: global
+       id: aws-credentials
+       id: aws-credentials
+       aws access key id
+       aws secret access key
+   ----
 
 
 ------------------------
@@ -484,6 +393,8 @@ copy urn and pass it to browser
       targetPort: 8080
     selector:
       app: order-service
+
+
   3. Required Jenkins Plugins
   Make sure these plugins are installed:
 
@@ -497,6 +408,7 @@ copy urn and pass it to browser
   AmazonEKSWorkerNodePolicy
   AmazonEKS_CNI_Policy
   AmazonEC2ContainerRegistryReadOnly
+
   5. Security Considerations
   Secrets Management:
   Store sensitive data in Kubernetes Secrets
@@ -519,3 +431,96 @@ copy urn and pass it to browser
     │   ├── ingress.yaml
     │   └── secrets.yaml
     └── Jenkinsfile
+
+
+
+    sudo -u jenkins cat /var/lib/jenkins/.kube/config
+    apiVersion: v1
+    clusters:
+    - cluster:
+        certificate-authority-data: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURCVENDQWUyZ0F3SUJBZ0lJRllwTFhwMHRad2N3RFFZSktvWklodmNOQVFFTEJRQXdGVEVUTUJFR0ExVUUKQXhNS2EzVmlaWEp1WlhSbGN6QWVGdzB5TlRBMk1UQXlNekkwTVRWYUZ3MHpOVEEyTURneU16STVNVFZhTUJVeApFekFSQmdOVkJBTVRDbXQxWW1WeWJtVjBaWE13Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXdnZ0VLCkFvSUJBUUN3NS8wRS9CN2xHWTN6NmtOUEZWOEtyVDFER3FJeWM4VFR6YmJUZ1V1TEM4dHprTGpmb01GSjZzR2EKVUd0d29NUkVBTzJFNXB3WDY5bnJibTZSbmpORy9FV2VjSW1kbFB0L0lNaEtQTnVjMkpWeVljRUh5SWFVdlMwSwpWanFjcHVkVG1TOWhjd0o4Z3AyU2VJYUdNR2J4dGFVOHZleUNzM214VHZLMTB4aFZrRkdxSDJVTG5UQlJQTlUzCjVpTmlzUzJXZ0k1QmhKRHhBOUgwRDFldWN2aC9qQmtKZGoySnZJYm13TWp2S215d2ppYi9SUHJjdldnWWRoTXIKOEgzOXMrUGVXbU5OSFlRNzN6T3NRZ3NVNVJ4aWRYa1krZ29kQU1kTzJVWjhMODc1SkJ4Z3QvQUNGb0x0dS8vaQpCaXNtNHN1MGErcHVPbjJocVdRZm1TRmpsWE9uQWdNQkFBR2pXVEJYTUE0R0ExVWREd0VCL3dRRUF3SUNwREFQCkJnTlZIUk1CQWY4RUJUQURBUUgvTUIwR0ExVWREZ1FXQkJSV1A3dnJUME1ISFF3L2ZsMXdFenBnTVpwWjhEQVYKQmdOVkhSRUVEakFNZ2dwcmRXSmxjbTVsZEdWek1BMEdDU3FHU0liM0RRRUJDd1VBQTRJQkFRQW5UNEFxM2hkcgorQzZNY09Yb0JXQ1M5ZlhWallNTmRBUE1MY0xuYXBKamNxZ25QenVHTGIram8ybmxxTFVVS09rWTNFRERrTXp0CjVuOHdlcFJnTFhYVkV3OEUwK3Jhc2IyS1FrdVJUVURvVHYzR3NjWUo4NVJ0K0o2SHJ1cFliRmRKSEtUbGRwSUoKK2Rka2hOU3grZW50b2t5MnFPTjBtS3JKa1d3TTUrZHFnaWhsY3g5TThzWEEyQzU0dDU3QzVqRmlhYlA1ZFovYgpnam1sY2lNTldWblhDak83bnZSSk8rRy8yME1pdlROKzZpaXNoOEtrMVAwcU9hMGhzQ1U0U0c2eStHN2pjOG14CkhZVkJOeGc2V3l1YVRWd3hZcnhSZis4VVNkNGZsYm04M1hxd2ZwVHJTMUlRVFRNYmNoU25yVndLQUMraUVVWm0KeS9VMjRya0t6dk1RCi0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+        server: https://0F41AC1205AA0C560BE053CE545B68DD.gr7.us-west-2.eks.amazonaws.com
+      name: arn:aws:eks:us-west-2:011243863866:cluster/order-ms-cluster
+    contexts:
+    - context:
+        cluster: arn:aws:eks:us-west-2:011243863866:cluster/order-ms-cluster
+        user: arn:aws:eks:us-west-2:011243863866:cluster/order-ms-cluster
+      name: arn:aws:eks:us-west-2:011243863866:cluster/order-ms-cluster
+    current-context: arn:aws:eks:us-west-2:011243863866:cluster/order-ms-cluster
+    kind: Config
+    preferences: {}
+    users:
+    - name: arn:aws:eks:us-west-2:011243863866:cluster/order-ms-cluster
+      user:
+        exec:
+          apiVersion: client.authentication.k8s.io/v1beta1
+          args:
+          - --region
+          - us-west-2
+          - eks
+          - get-token
+          - --cluster-name
+          - order-ms-cluster
+          - --output
+          - json
+          command: aws
+
+
+ PIPELINE
+ tools:
+     maven: 'maven'
+     jdk 'jdk17'
+
+ HOw to check out source code from github
+     click on "pipeline syntax"
+     select "checkout from vrsion control"
+     url : https://github.com/mohammedhassan1998/Order-Microservice.git
+     branch: main
+     creadentials: create one then select it
+     username: PhuocQuang76
+     password: token
+     click "Generate Pipeline Script"
+     -> it will generate the pipeline script , then copy and paste it to jenkins pipeline
+
+ ----
+ checkout scmGit(
+     branches: [[name: '*/main']],
+     extensions: [],
+     userRemoteConfigs: [[
+         credentialsId: 'a9224474-5548-459c-91bd-260c3a66375c',
+         url: 'https://github.com/PhuocQuang76/order-ms.git'
+     ]]
+ )
+ ----
+
+ ******************** DOCKER *******************
+ docker build -t my-jenkins -f Dockerfile.jenkins .
+
+ # Run the container
+
+ # Stop and remove existing Jenkins container if running
+ docker stop jenkins 2>/dev/null || true
+ docker rm jenkins 2>/dev/null || true
+
+ # Start Jenkins with the correct Docker socket path
+ docker run -d -p 9090:8080 -p 50000:50000 -v jenkins_home:/var/jenkins_home --name jenkins jenkins/jenkins:lts
+
+ docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+
+ docker exec -it jenkins bash
+ cat /var/jenkins_home/secrets/initialAdminPassword
+
+
+
+choui
+2 trung ga
+200 ml nuoc cot dua
+120 sua tuoi
+80g bo
+
+40g bot mi, or bot gao, bot bap
+160 do c
+60ml sua dac
+nuong 90p
+60p phu giay bac
+
