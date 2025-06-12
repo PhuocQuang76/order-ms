@@ -49,12 +49,10 @@ kind: Service
 metadata:
   name: order-ms-svc
   namespace: order-ms
-  labels:
-    app: order-ms
 spec:
-  type: ClusterIP
   ports:
     - port: 80
-      targetPort: 8080  # Change this to match your application's port
+      targetPort: 8088  # Changed from 8080 to 8088 to match the container port
   selector:
-    app: order-ms  # This should match the labels in your deployment
+    app: order-ms
+  type: ClusterIP
